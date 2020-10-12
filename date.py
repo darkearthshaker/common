@@ -2,15 +2,15 @@ import datetime
 import time
 from dateutil.relativedelta import relativedelta
 from dateutil.parser import parse
+
+# replace this if possible
 import QuantLib as ql
-
-
-__all__ = ['Date']
-
 CALENDARS_MAP = {
     'BOND': ql.UnitedStates(ql.UnitedStates.GovernmentBond),
     'STOCK': ql.UnitedStates(ql.UnitedStates.NYSE)
 }
+
+__all__ = ['Date']
 
 
 class Date(datetime.date):
@@ -23,6 +23,8 @@ class Date(datetime.date):
         Date
         QuantLib date
         2020, 10, 1 - original datetime.date input
+    
+    Given different calendar package, rewrite is_bizday() accordingly.
     """
     default_format = "%Y%m%d"
 
@@ -66,46 +68,35 @@ class Date(datetime.date):
     def add(self, years=0, months=0, days=0):
         return self + relativedelta(years=years, months=months, days=days)
 
-    def next_bizday(self, calendar='Bond'):
-        calendar_used = CALENDARS_MAP[calendar.upper()]
-        next_day = self
+    def _neighbour_bizday(self, calendar, n):
+        d = self
         while True:
-            next_day = next_day.add(days=1)
-            if calendar_used.isBusinessDay(next_day.as_ql()):
-                return next_day
-        # should never reach here
-        return self
+            d = d.add(days=n)
+            if d.is_bizday(calendar):
+                return d
+
+    def next_bizday(self, calendar='Bond'):
+        return self._neighbour_bizday(calendar, 1)
 
     def prev_bizday(self, calendar='Bond'):
-        calendar_used = CALENDARS_MAP[calendar.upper()]
-        prev_day = self
-        while True:
-            prev_day = prev_day.add(days=-1)
-            if calendar_used.isBusinessDay(prev_day.as_ql()):
-                return prev_day
-        # should never reach here
-        return self 
+        return self._neighbour_bizday(calendar, -1)
 
     def is_bizday(self, calendar='Bond'):
         calendar_used = CALENDARS_MAP[calendar.upper()]
         return calendar_used.isBusinessDay(self.as_ql())
 
     @classmethod
-    def range(cls, start, end=None, show_holiday=False):
-        if not show_holiday and not start.is_bizday():
-            start = start.next_bizday()
-        end = start if end is None else end
-        if not show_holiday and not end.is_bizday():
-            end = end.prev_bizday()
-        date_range = []
-        add_date = start
-        while end >= add_date:
-            date_range.append(add_date)
-            if not show_holiday:
-                add_date = add_date.next_bizday()
-            else:
-                add_date = add_date.add(days=1)
-        return date_range
+    def range(cls, start, end, include_last=False, show_holiday=False, calendar='Bond'):
+        # include_last default to False to be consistent with range(.)
+        if not include_last:
+            end = end.add(days=-1)
+        dates = []
+        d = start
+        while d <= end:
+            if show_holiday or d.is_bizday(calendar):
+                dates.append(d)
+            d = d.add(days=1)
+        return dates
 
     def as_str(self, format=None):
         format = self.default_format if format is None else format
